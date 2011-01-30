@@ -1,0 +1,64 @@
+winddb is a system to merge data from several types of weather stations
+and export it to the web in common formats (JSON + XML).
+It also maintains metadata for the monitored weather stations, such as their
+geographic location and name.
+
+winddb uses MySQL as its datasource. It relies on other systems to create, 
+collect and manage weather data samples. winddb will merge the data using
+MySQL views and export it to JSON/XML files on disk using the winddb python
+script.
+
+When new samples arrive, winddb can be used to re-generate any files related
+
+Dependencies:
+-------------
+- Python (tested with v2.6)
+- MySQL interface for python ("apt-get install python-mysqldb" on debian, 
+  "yum install MySQL-python" on Fedora/Red Hat) 
+- Python JSON ("apt-get install simplejson" on debian)
+
+Installation:
+-------------
+**TODO**
+
+Usage of exported data:
+-----------------------
+For easy access, it is recommended to output the generated files to a subdir of
+your webroot. This allows for thirdparty applications (such as mobile apps) to
+download them using a standard HTTP request.
+
+For each station, winddb provides the most recent sample aswell as a log of the
+n most recent samples. Typically, applications want to download the history file 
+once during initialization (to populate graphs) and then append with new data 
+as samples arrive. 
+
+Since each station may use different samplerate, it is not recommended to use a
+fixed rate for fetching the latest sample. To prevent unnecessary hammering, 
+the recommended pollrate for each station is provided by the station info file. 
+
+In addition to the pollrate, the info file also contains GPS coordinates and 
+other miscellaneous station infos. The application should only have to download
+this file once every session.
+
+$ROOT							HTTP root, for example http://my.windsite.com/
+$ROOT/index.json				Station index, JSON formatted
+$ROOT/index.xml					Station index, XML formatted
+$ROOT/$stationid/info.json		Station info, JSON formatted 
+$ROOT/$stationid/info.xml		Station info, XML formatted 
+$ROOT/$stationid/history.json	Last n samples (including latest), JSON formatted 
+$ROOT/$stationid/history.xml	Last n samples (including latest), XML formatted
+$ROOT/$stationid/latest.json	Lastest sample, JSON formatted
+$ROOT/$stationid/latest.xml		Lastest sample, XML formatted
+
+$stationid can be found in the station index (index.json or index.xml)
+
+Guidelines for thirdparty applications:
+---------------------------------------
+* Do not hammer, use the pollrate for the given station. Estimate next update by
+adding the pollrate to the latest sample date.
+
+* Warn user about old samples. Do not assume lastest sample is NEW, check the
+dates!
+
+* Do not cache station info in between session. Stations may become disabled or
+unavailable at any time.
