@@ -15,7 +15,7 @@ Dependencies:
 - Python (tested with v2.6)
 - MySQL interface for python ("apt-get install python-mysqldb" on debian, 
   "yum install MySQL-python" on Fedora/Red Hat) 
-- Python JSON ("apt-get install simplejson" on debian)
+- Python JSON ("apt-get install python-simplejson" on debian)
 
 Installation:
 -------------
