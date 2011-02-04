@@ -62,3 +62,8 @@ dates!
 
 * Do not cache station info in between session. Stations may become disabled or
 unavailable at any time.
+
+* Individual samples are grouped into sample periods. A period has a first and
+last sample-timestamp. When plotting average, max and min during a period, the
+application should use the midpoint between these dates as its x-axis value.
+E.g. midpoint = (first_sample + last_sample) / 2
