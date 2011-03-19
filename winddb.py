@@ -62,17 +62,6 @@ xml_index_prolog = """<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 		id CDATA "0"
 		friendlyname CDATA "None"
 		lastupdate CDATA "0"
-	>
-]>
-"""
-
-xml_info_prolog = """<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
-<!DOCTYPE info [
-	<!ELEMENT info EMPTY>
-
-	<!ATTLIST info
-		stationid CDATA "0"
-		friendlyname CDATA "None"
 		pollrate CDATA "0"
 		pos_lat CDATA "0.0"
 		pos_lon	CDATA "0.0"
@@ -85,10 +74,8 @@ last_sample="%d" windspeed_max="%f" windspeed_min="%f" windspeed_avg="%f" \
 airtemp_avg="%f" winddir_avg="%f" winddir_stability="%f" humidity="%s" \
 air_pressure="%s"/>\n'
 
-xml_station = '  <station id="%s" lastupdate="%d" friendlyname="%s"/>\n'
-
-xml_info = '<info id="%s" friendlyname="%s" pollrate="%d" pos_lat="%s" \
-pos_lon="%s"/>\n'
+xml_station = '  <station id="%s" friendlyname="%s" lastupdate="%d" \
+pollrate="%d" pos_lat="%s" pos_lon="%s" />\n'
 
 def usage(*args):
 	sys.stdout = sys.stderr
@@ -123,11 +110,6 @@ def output_history_json(filepath, history):
 	out.write(json.dumps(history, indent=2))
 	out.close()
 
-def output_info_json(filepath, info):
-	out = open(filepath, 'w')
-	out.write(json.dumps(info, indent=2))
-	out.close()
-
 def output_latest_xml(filepath, period):
 	out = open(filepath, 'w')
 	out.write(xml_sample_prolog)
@@ -156,16 +138,7 @@ def output_history_xml(filepath, history):
 							period['air_pressure'] if period['air_pressure'] is not None else "NULL"))
 	out.write('</history>')
 	out.close()
-	
-def output_info_xml(filepath, info):
-	out = open(filepath, 'w')
-	out.write(xml_info_prolog)
-	out.write(xml_info % (info['stationid'], info["friendlyname"], 
-		info["pollrate"], 
-		info["pos_lat"] if info["pos_lat"] is not None else "NULL",
-		info["pos_lon"] if info["pos_lon"] is not None else "NULL"))
-	out.close()
-	
+		
 def build_station(stationid):
 	cur = db.cursor(MySQLdb.cursors.DictCursor)
 	samples = []
@@ -205,32 +178,14 @@ def build_station(stationid):
 	try:
 		os.makedirs(stationdir)
 	except OSError: pass
-
-	# Collect the station info
-	q = """SELECT stationid, friendlyname, pollrate, position_lat as pos_lat, position_lon as pos_lon
-		   FROM winddb_stations 
-		   WHERE stationid='%s' 
-		   LIMIT 1"""
-	if (not cur.execute(q % stationid)):
-		print "Failed to fetch station info for station '%s'" % stationid
-		return
-
-	info = cur.fetchone()
-	if info == None:
-		print "No such station '%s' (fetch station info)" % stationid
-		return
-			
-	cur.close()		
 	
 	if (do_json): 
 		output_latest_json(os.path.join(stationdir, "latest.json"), history[0])
 		output_history_json(os.path.join(stationdir, "history.json"), history)
-		output_info_json(os.path.join(stationdir, "info.json"), info)
 		
 	if (do_xml): 
 		output_latest_xml(os.path.join(stationdir, "latest.xml"), history[0])
 		output_history_xml(os.path.join(stationdir, "history.xml"), history)
-		output_info_xml(os.path.join(stationdir, "info.xml"), info)
 
 def output_index_json(filepath, stations):
 	out = open(filepath, 'w')
@@ -242,19 +197,21 @@ def output_index_xml(filepath, stations):
 	out.write(xml_index_prolog)
 	out.write('<stations>\n')
 	for station in stations:
-		out.write(xml_station % (station['id'], station['lastupdate'], 
-					station['friendlyname']))
+		out.write(xml_station % (station['id'], station['friendlyname'],
+			station['lastupdate'], station['pollrate'], station['pos_lat'], 
+			station['pos_lon']))
 	out.write('</stations>')
 	out.close()	
 
 def build_index():
 	cur = db.cursor(MySQLdb.cursors.DictCursor)
 
-	q = """SELECT a.stationid as id, MAX(b.last_sample) as lastupdate, a.friendlyname 
+	q = """SELECT a.stationid as id, friendlyname, pollrate, 
+		MAX(b.last_sample) as lastupdate, position_lat as pos_lat,
+		position_lon as pos_lon 
 		FROM winddb_stations a
-		LEFT JOIN (winddb_samples b) ON (a.stationid = b.stationid)
-		GROUP BY b.stationid
-		HAVING lastupdate IS NOT NULL
+		LEFT JOIN (winddb_samples b) ON (a.stationid=b.stationid)
+		GROUP BY a.stationid
 		ORDER BY a.stationid ASC"""
 
 	if (not cur.execute(q)):
