@@ -65,6 +65,7 @@ xml_index_prolog = """<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 		pollrate CDATA "0"
 		pos_lat CDATA "0.0"
 		pos_lon	CDATA "0.0"
+		description	CDATA "0.0"
 	>
 ]>
 """
@@ -75,7 +76,7 @@ airtemp_avg="%f" winddir_avg="%f" winddir_stability="%f" humidity="%s" \
 air_pressure="%s"/>\n'
 
 xml_station = '  <station id="%s" friendlyname="%s" lastupdate="%d" \
-pollrate="%d" pos_lat="%s" pos_lon="%s" />\n'
+pollrate="%d" pos_lat="%s" pos_lon="%s" description="%s" />\n'
 
 def usage(*args):
 	sys.stdout = sys.stderr
@@ -199,7 +200,7 @@ def output_index_xml(filepath, stations):
 	for station in stations:
 		out.write(xml_station % (station['id'], station['friendlyname'],
 			station['lastupdate'], station['pollrate'], station['pos_lat'], 
-			station['pos_lon']))
+			station['pos_lon'], station['description']))
 	out.write('</stations>')
 	out.close()	
 
@@ -208,7 +209,7 @@ def build_index():
 
 	q = """SELECT a.stationid as id, friendlyname, pollrate, 
 		MAX(b.last_sample) as lastupdate, position_lat as pos_lat,
-		position_lon as pos_lon 
+		position_lon as pos_lon, description 
 		FROM winddb_stations a
 		LEFT JOIN (winddb_samples b) ON (a.stationid=b.stationid)
 		GROUP BY a.stationid

@@ -4,6 +4,7 @@ CREATE TABLE winddb_stations (
   pollrate int(10) unsigned NOT NULL,
   position_lat float default NULL,
   position_lon float default NULL,
+  description text default NULL,
   UNIQUE KEY stationid (stationid)
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1;
 
