@@ -13,6 +13,8 @@ options:
 -l <samples>	Number of samples to output (defaults to 30)
 -x				Do not generate XML 
 -j				Do not generate JSON
+-p				Do not generate JSONP
+-c <callback>	JSONP callback function (defaults to 'callback')
 """
 
 import ConfigParser
@@ -27,6 +29,8 @@ global db
 global outputdir
 global do_xml
 global do_json
+global do_jsonp
+global callback
 global samplelimit
 
 xml_sample_prolog = """<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
@@ -101,6 +105,16 @@ def get_stations():
 
 	cur.close()
 	return stationList
+
+def output_latest_jsonp(filepath, latest):
+	out = open(filepath, 'w')
+	out.write("%s(%s);" % (callback, json.dumps(latest)))
+	out.close()
+
+def output_history_jsonp(filepath, history):
+	out = open(filepath, 'w')
+	out.write("%s(%s);" % (callback, json.dumps(history)))
+	out.close()
 
 def output_latest_json(filepath, latest):
 	out = open(filepath, 'w')
@@ -185,9 +199,18 @@ def build_station(stationid):
 		output_latest_json(os.path.join(stationdir, "latest.json"), history[0])
 		output_history_json(os.path.join(stationdir, "history.json"), history)
 		
+	if (do_jsonp):
+		output_latest_jsonp(os.path.join(stationdir, "latest.jsonp"), history[0])
+		output_history_jsonp(os.path.join(stationdir, "history.jsonp"), history)
+
 	if (do_xml): 
 		output_latest_xml(os.path.join(stationdir, "latest.xml"), history[0])
 		output_history_xml(os.path.join(stationdir, "history.xml"), history)
+
+def output_index_jsonp(filepath, stations):
+	out = open(filepath, 'w')
+	out.write("%s(%s);" % (callback, json.dumps(stations)))
+	out.close()
 
 def output_index_json(filepath, stations):
 	out = open(filepath, 'w')
@@ -232,6 +255,9 @@ def build_index():
 	if (do_json):
 		output_index_json(os.path.join(outputdir, "index.json"), stations)
 	
+	if (do_jsonp):
+		output_index_jsonp(os.path.join(outputdir, "index.jsonp"), stations)
+
 	if (do_xml):
 		output_index_xml(os.path.join(outputdir, "index.xml"), stations)
 
@@ -246,11 +272,13 @@ if __name__ == "__main__":
 	outputdir = "."	
 	do_xml = True
 	do_json = True
+	do_jsonp = True
 	station = False
 	samplelimit = 30
+	callback = 'callback'
 
 	try:
-		opts, args = getopt.getopt(sys.argv[1:], 'f:s:d:xjcl:')
+		opts, args = getopt.getopt(sys.argv[1:], 'f:s:d:xjpl:c:')
 	except getopt.error, msg:
 		usage(msg)
 
@@ -259,7 +287,9 @@ if __name__ == "__main__":
 		if o == '-s': station = a
 		if o == '-d': outputdir = a
 		if o == '-x': do_xml = False
+		if o == '-x': do_jsonp = False
 		if o == '-j': do_json = False
+		if o == '-c': callback = a
 		if o == '-l': samplelimit = int(a)
 
 	if not os.path.isdir(outputdir):
