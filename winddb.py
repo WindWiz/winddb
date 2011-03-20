@@ -21,6 +21,7 @@ import getopt
 import sys
 import os.path
 import simplejson as json
+import codecs
 
 global db
 global outputdir
@@ -112,7 +113,7 @@ def output_history_json(filepath, history):
 	out.close()
 
 def output_latest_xml(filepath, period):
-	out = open(filepath, 'w')
+	out = codecs.open(filepath, 'w', 'utf-8')
 	out.write(xml_sample_prolog)
 	out.write('<history stationid="%s">\n' % period["stationid"])
 	out.write(xml_sample % (period['num_samples'], period['first_sample'], 
@@ -126,7 +127,7 @@ def output_latest_xml(filepath, period):
 	out.close()
 
 def output_history_xml(filepath, history):
-	out = open(filepath, 'w')
+	out = codecs.open(filepath, 'w', 'utf-8')
 	out.write(xml_sample_prolog)
 	out.write('<history stationid="%s">\n' % history[0]["stationid"])
 	for period in history:
@@ -194,7 +195,7 @@ def output_index_json(filepath, stations):
 	out.close()
 
 def output_index_xml(filepath, stations):
-	out = open(filepath, 'w')
+	out = codecs.open(filepath, 'w', 'utf-8')
 	out.write(xml_index_prolog)
 	out.write('<stations>\n')
 	for station in stations:
@@ -275,7 +276,9 @@ if __name__ == "__main__":
 	db = MySQLdb.connect(host=config.get('mysql', 'dbhost'), 
 						 user=config.get('mysql', 'dbuser'),
 						 passwd=config.get('mysql', 'dbpass'), 
-						 db=config.get('mysql', 'dbname'))
+						 db=config.get('mysql', 'dbname'),
+						 use_unicode=True,
+						 charset='utf8')
 		
 	if (station == False):
 		stationlist = get_stations()

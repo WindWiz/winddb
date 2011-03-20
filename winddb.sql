@@ -6,7 +6,7 @@ CREATE TABLE winddb_stations (
   position_lon float default NULL,
   description text default NULL,
   UNIQUE KEY stationid (stationid)
-) ENGINE=MyISAM DEFAULT CHARSET=latin1;
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 CREATE VIEW
 	winddb_samples 
