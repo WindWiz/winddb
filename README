@@ -34,28 +34,34 @@ as samples arrive.
 
 Since each station may use different samplerate, it is not recommended to use a
 fixed rate for fetching the latest sample. To prevent unnecessary hammering, 
-the recommended pollrate for each station is provided by the station info file. 
+the recommended pollrate for each station is by the station index file.
 
-In addition to the pollrate, the info file also contains GPS coordinates and 
+In addition to the pollrate, the index file also contains GPS coordinates and
 other miscellaneous station infos. The application should only have to download
 this file once every session.
 
 $ROOT				HTTP root, for example http://my.windsite.com/
-$ROOT/index.json		Station index, JSON formatted
-$ROOT/index.xml			Station index, XML formatted
-$ROOT/$stationid/info.json	Station info, JSON formatted
-$ROOT/$stationid/info.xml	Station info, XML formatted
-$ROOT/$stationid/history.json	Last n samples (including latest), JSON formatted
-$ROOT/$stationid/history.xml	Last n samples (including latest), XML formatted
-$ROOT/$stationid/latest.json	Lastest sample, JSON formatted
-$ROOT/$stationid/latest.xml	Lastest sample, XML formatted
+$ROOT/index.json		Station index, JSON
+$ROOT/index.jsonp		Station index, JSONP
+$ROOT/index.xml			Station index, XML
+$ROOT/$stationid/history.json	Last n samples (including latest), JSON
+$ROOT/$stationid/history.xml	Last n samples (including latest), XML
+$ROOT/$stationid/history.jsonp	Last n samples (including latest), JSONP
+$ROOT/$stationid/latest.json	Lastest sample, JSON
+$ROOT/$stationid/latest.jsonp	Lastest sample, JSONP
+$ROOT/$stationid/latest.xml	Lastest sample, XML
 
-$stationid can be found in the station index (index.json or index.xml)
+$stationid can be found in the station index (index.{json,jsonp,xml}).
+
+As the JSONP files are static, (javascript) clients must not be configured to
+dynamically select callback name. A custom callback function name may be
+specified as a command line parameter to winddb. Javascript should then declare
+the same function to receive the padded JSON.
 
 Guidelines for thirdparty applications:
 ---------------------------------------
-* Do not hammer, use the pollrate for the given station. Estimate next update by
-adding the pollrate to the latest sample date.
+* Do not hammer, use the pollrate for the given station. Estimate next update
+by adding the pollrate to the latest sample date.
 
 * Warn user about old samples. Do not assume lastest sample is NEW, check the
 dates!
