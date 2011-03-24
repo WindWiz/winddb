@@ -40,15 +40,15 @@ In addition to the pollrate, the info file also contains GPS coordinates and
 other miscellaneous station infos. The application should only have to download
 this file once every session.
 
-$ROOT							HTTP root, for example http://my.windsite.com/
-$ROOT/index.json				Station index, JSON formatted
-$ROOT/index.xml					Station index, XML formatted
-$ROOT/$stationid/info.json		Station info, JSON formatted 
-$ROOT/$stationid/info.xml		Station info, XML formatted 
-$ROOT/$stationid/history.json	Last n samples (including latest), JSON formatted 
+$ROOT				HTTP root, for example http://my.windsite.com/
+$ROOT/index.json		Station index, JSON formatted
+$ROOT/index.xml			Station index, XML formatted
+$ROOT/$stationid/info.json	Station info, JSON formatted
+$ROOT/$stationid/info.xml	Station info, XML formatted
+$ROOT/$stationid/history.json	Last n samples (including latest), JSON formatted
 $ROOT/$stationid/history.xml	Last n samples (including latest), XML formatted
 $ROOT/$stationid/latest.json	Lastest sample, JSON formatted
-$ROOT/$stationid/latest.xml		Lastest sample, XML formatted
+$ROOT/$stationid/latest.xml	Lastest sample, XML formatted
 
 $stationid can be found in the station index (index.json or index.xml)
 
