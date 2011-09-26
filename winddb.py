@@ -190,6 +190,9 @@ def build_station(stationid):
 		row["airtemp_avg"] = float(row["airtemp_avg"])	
 		history.append(row)
 
+	if not history:
+		return
+
 	stationdir = os.path.join(outputdir, stationid)
 	try:
 		os.makedirs(stationdir)
@@ -248,7 +251,8 @@ def build_index():
 		row = cur.fetchone()
 		if row == None:
 			break
-		stations.append(row)
+		if row['lastupdate'] is not None:
+			stations.append(row)
 
 	cur.close()
 
