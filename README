@@ -1,14 +1,14 @@
-winddb is a system to merge data from several types of weather stations
-and export it to the web in common formats (JSON + XML).
-It also maintains metadata for the monitored weather stations, such as their
-geographic location and name.
+winddb is a system to merge data from several types of weather station databases
+and export it to the web in a common JSON-format.
 
-winddb uses MySQL as its datasource. It relies on other systems to create, 
-collect and manage weather data samples. winddb will merge the data using
-MySQL views and export it to JSON/XML files on disk using the winddb python
-script.
+It also maintains and exposes metadata for the monitored weather stations, such 
+as their geographic location, name and pollrate.
 
-When new samples arrive, winddb can be used to re-generate any files related
+winddb uses SQLite for its station database. It relies on a plugin-like 
+architecture to collect and manage weather data samples from each station.
+winddb will merge the data and export it to JSON files on disk.
+
+When new samples arrive, winddb can be used to re-generate related files.
 
 Dependencies:
 -------------
@@ -34,24 +34,21 @@ as samples arrive.
 
 Since each station may use different samplerate, it is not recommended to use a
 fixed rate for fetching the latest sample. To prevent unnecessary hammering, 
-the recommended pollrate for each station is by the station index file.
+the recommended pollrate for each station is defined by the station index file.
 
 In addition to the pollrate, the index file also contains GPS coordinates and
 other miscellaneous station infos. The application should only have to download
 this file once every session.
 
-$ROOT				HTTP root, for example http://my.windsite.com/
-$ROOT/index.json		Station index, JSON
-$ROOT/index.jsonp		Station index, JSONP
-$ROOT/index.xml			Station index, XML
-$ROOT/$stationid/history.json	Last n samples (including latest), JSON
-$ROOT/$stationid/history.xml	Last n samples (including latest), XML
-$ROOT/$stationid/history.jsonp	Last n samples (including latest), JSONP
-$ROOT/$stationid/latest.json	Lastest sample, JSON
-$ROOT/$stationid/latest.jsonp	Lastest sample, JSONP
-$ROOT/$stationid/latest.xml	Lastest sample, XML
+$ROOT                           HTTP root, for example http://my.windsite.com/
+$ROOT/index.json                Station index, JSON
+$ROOT/index.jsonp               Station index, JSONP
+$ROOT/$stationid/history.json   Last n samples (including latest), JSON
+$ROOT/$stationid/history.jsonp  Last n samples (including latest), JSONP
+$ROOT/$stationid/latest.json    Lastest sample, JSON
+$ROOT/$stationid/latest.jsonp   Lastest sample, JSONP
 
-$stationid can be found in the station index (index.{json,jsonp,xml}).
+$stationid can be found in the station index (index.{json,jsonp}).
 
 As the JSONP files are static, (javascript) clients must not be configured to
 dynamically select callback name. A custom callback function name may be
@@ -60,8 +57,7 @@ the same function to receive the padded JSON.
 
 Guidelines for thirdparty applications:
 ---------------------------------------
-* Do not hammer, use the pollrate for the given station. Estimate next update
-by adding the pollrate to the latest sample date.
+* Do not hammer, use the pollrate for the given station.
 
 * Warn user about old samples. Do not assume lastest sample is NEW, check the
 dates!
