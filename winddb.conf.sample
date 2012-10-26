@@ -1,6 +1,12 @@
-[mysql]
-dbhost=localhost
-dbpass=
-dbuser=winddb
-dbname=winddb
-
+{
+	"awsxd": {
+		"user": "mydbuser",
+		"host": "localhost",
+		"pass": "",
+		"db": "mydatabase"
+	},
+	"osod": {
+		"db": "../osod/osod.db",
+		"periodtime": 5
+	}
+}
