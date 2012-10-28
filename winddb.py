@@ -11,7 +11,7 @@ options:
 -x <configfile> WindDB configuration file (defaults to winddb.conf)
 -s <station>    Station to produce output for (omit to output for all)
 -o <dir>        Output directory (defaults to '.')
--l <samples>    Number of samples to output (defaults to 30)
+-a <age>        Maximum sample age to process, in minutes (defaults to 180)
 -j              Do not generate JSON
 -p              Do not generate JSONP
 -i <indent>     Number of JSON indentations spaces (defaults to 0)
@@ -24,6 +24,7 @@ import os.path
 import simplejson as json
 import codecs
 import sqlite3
+import time
 
 # plugins
 import awsxd
@@ -66,14 +67,14 @@ class station(object):
 		else:
 			raise AttributeError
 
-	def get_samples(self, limit):
-		return self.source.get_samples(self.id, limit)
+	def get_samples(self, t):
+		return self.source.get_samples(self.id, t)
 		
 	def get_latest_update(self):
 		return self.source.get_latest_update(self.id)
 	
-def write_station(station, outputdir, do_json, do_jsonp, samplelimit, callback, indent):
-	samples = station.get_samples(samplelimit)
+def write_station(station, outputdir, do_json, do_jsonp, t, callback, indent):
+	samples = station.get_samples(t)
 	
 	if samples is None:
 		print "warning: No samples for '%s'" % station.id
@@ -135,7 +136,7 @@ def enum_sources(configfile):
 	return { a.name: a, 
 			 o.name: o }
 
-def get_stations(configfile, db, idfilter = None):
+def get_stations(configfile, db, t, idfilter = None):
 	cursor = db.cursor()
 	if idfilter is None:
 		ret = cursor.execute("SELECT * FROM stations ORDER BY id")
@@ -155,12 +156,6 @@ def get_stations(configfile, db, idfilter = None):
 																	handler)
 			continue
 
-		source = sources[handler]
-
-		# Filter away inactive stations (with no samples)
-		if (source.get_latest_update(row['id']) is None):
-			continue
-
 		fields = {'id': row['id'],
 				  'friendlyname': row['friendlyname'],
 				  'pollrate': row['pollrate'],
@@ -168,7 +163,18 @@ def get_stations(configfile, db, idfilter = None):
 				  'pos_lon': row['position_lon'],
 				  'description': row['description']}
 
-		stations.append(station(fields, source))
+		s = station(fields, sources[handler])
+		# Filter away inactive stations (no samples)
+		if (s.lastupdate is None):
+			print "warning: no samples for station %s" % s.id
+			continue
+			
+		# Filter away inactive stations (old samples)			
+		if (s.lastupdate < t):
+			print "warning: skipping %s (latest sample %d < %d)" % (s.id, s.lastupdate, t)
+			continue
+
+		stations.append(s)
 
 	return stations
 
@@ -176,7 +182,7 @@ if __name__ == "__main__":
 	outputdir = "."	
 	do_json = True
 	do_jsonp = True
-	samplelimit = 30
+	maxage = 180
 	station_name = None
 	callback = 'callback'
 	dbfile = 'wind.db'
@@ -184,7 +190,7 @@ if __name__ == "__main__":
 	configfile = 'winddb.conf'
 
 	try:
-		opts, args = getopt.getopt(sys.argv[1:], 'f:s:o:pjc:l:i:x:')
+		opts, args = getopt.getopt(sys.argv[1:], 'f:s:o:pjc:a:i:x:')
 	except getopt.error, msg:
 		usage(msg)
 
@@ -196,7 +202,7 @@ if __name__ == "__main__":
 		if o == '-p': do_jsonp = False
 		if o == '-j': do_json = False
 		if o == '-c': callback = a
-		if o == '-l': samplelimit = int(a)
+		if o == '-a': maxage = int(a)
 		if o == '-i': indent = int(a)
 
 	if not os.path.isdir(outputdir):
@@ -212,11 +218,11 @@ if __name__ == "__main__":
 	db.row_factory = sqlite3.Row	# "dict-cursor"-ish support
 	create_database_table(db)
 
-	stations = get_stations(configfile, db, station_name)
-
-	write_index(stations, outputdir, do_json, do_jsonp, callback, indent)
+	t = time.time() - (maxage * 60)
+	stations = get_stations(configfile, db, t, station_name)
+	
+	write_index(stations, outputdir, do_json, do_jsonp, callback, indent)	
 	for station in stations:
-		write_station(station, outputdir, do_json, do_jsonp, 
-			samplelimit, callback, indent)
+		write_station(station, outputdir, do_json, do_jsonp, t, callback, indent)
 
 	db.close()

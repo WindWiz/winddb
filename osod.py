@@ -4,6 +4,7 @@
 
 import sqlite3
 from source import source
+import datetime
 
 class osod(source):
 	def __init__(self, config):
@@ -13,9 +14,30 @@ class osod(source):
 		self.db = sqlite3.connect(dbfile)
 		self.db.row_factory = sqlite3.Row
 		
-	def get_samples(self, station, limit):
+	def get_latest_update(self, station):
 		cursor = self.db.cursor()
+		query = """SELECT 
+		MAX(sample_tstamp) as last_sample
+		FROM osod
+		WHERE instance = ? 
+		GROUP BY sample_tstamp/(pollrate*%d)
+		ORDER BY last_sample DESC
+		LIMIT 1,1""" % (self.periodtime)
+		
+		if not cursor.execute(query, (station, )):
+			return None
 
+		row = cursor.fetchone()
+		cursor.close()
+
+		if row is None:
+			return None
+
+		return row['last_sample']
+				
+	def get_samples(self, station, t):
+		cursor = self.db.cursor()
+		print datetime.datetime.utcfromtimestamp(t)
 		query = """SELECT 
 		COUNT(*) as num_samples, 
 		MAX(sample_tstamp) as last_sample, 
@@ -31,11 +53,11 @@ class osod(source):
 		FROM osod 
 		WHERE instance = ? 
 		GROUP BY sample_tstamp/(pollrate*%d)
-		HAVING num_samples=%d 
+		HAVING first_sample >= ?
 		ORDER BY last_sample DESC
-		LIMIT ?""" % (self.periodtime, self.periodtime)
+		LIMIT 1,999999""" % (self.periodtime)
 		
-		if not cursor.execute(query, (station, limit)):
+		if not cursor.execute(query, (station, t)):
 			return None
 
 		samples = []
@@ -44,6 +66,8 @@ class osod(source):
 			for key in row.keys():
 				sample[key] = row[key]
 			samples.append(sample)
+				 
+		cursor.close()				 
 				 
 		if not samples:
 			return None

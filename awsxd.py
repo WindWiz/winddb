@@ -19,8 +19,29 @@ class awsxd(source):
 					db=dbname,
 					use_unicode=True,
 					charset='utf8')
+							
+	def get_latest_update(self, station):
+		cursor = self.db.cursor(mysql.cursors.DictCursor)
+
+		query = """SELECT 
+		UNIX_TIMESTAMP(create_stamp) as last_update
+		FROM awsx 
+		WHERE station = %s
+		ORDER BY last_update DESC
+		LIMIT 1"""
+		
+		if not cursor.execute(query, (station, )):
+			return None
+			
+		row = cursor.fetchone()
+		cursor.close()
+		
+		if row is None:
+			return None			
+			
+		return row['last_update']
 								  
-	def get_samples(self, station, limit):
+	def get_samples(self, station, t):
 		cursor = self.db.cursor(mysql.cursors.DictCursor)
 
 		query = """SELECT 
@@ -37,8 +58,8 @@ class awsxd(source):
 		air_pressure as airpressure
 		FROM awsx 
 		WHERE station = %s
-		ORDER BY last_sample DESC
-		LIMIT %d""" % ("%s", limit)
+		HAVING first_sample >= %d
+		ORDER BY last_sample DESC""" % ("%s", t)
 
 		if not cursor.execute(query, (station, )):
 			return None
