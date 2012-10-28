@@ -1,31 +1,120 @@
-winddb is a system to merge data from several types of weather station databases
-and export it to the web in a common JSON-format.
+Winddb
 
-It also maintains and exposes metadata for the monitored weather stations, such 
-as their geographic location, name and pollrate.
+Introduction
+--------------------------------------------------------------------------------
+winddb is a system to merge datasamples from several types of weather station 
+databases and export it to the web in a common JSON-format. winddb does not 
+store any weather data on its own.
 
-winddb uses SQLite for its station database. It relies on a plugin-like 
-architecture to collect and manage weather data samples from each station.
-winddb will merge the data and export it to JSON files on disk.
+The winddb output can be distributed to provide an API for apps to access data 
+from several types of weather stations in a uniform way -- regardless of brand, 
+model or connectivity. Examples of consumers are web sites and mobile apps.
 
-When new samples arrive, winddb can be used to re-generate related files.
+winddb maintains a database of weather stations, geographic location, name and 
+other sorts of metadata. Each station is tied to a data source. Data sources
+are implemented in a plugin-like fashion in winddb, one for each type of station.
+Data sources allow winddb to fetch data samples without knowing details about 
+how they are stored or gathered.
+
+Multiple stations may use the same data-source, since datasamples are grouped by
+station name.
 
 Dependencies:
--------------
-- Python (tested with v2.6)
-- MySQL interface for python ("apt-get install python-mysqldb" on debian, 
-  "yum install MySQL-python" on Fedora/Red Hat) 
+--------------------------------------------------------------------------------
+- Python 2.x (tested with v2.7.3)
 - Python JSON ("apt-get install python-simplejson" on debian)
+- The AWSXD source also requires MySQL interface support.
+  ("apt-get install python-mysqldb" on debian).
 
-Installation:
--------------
-**TODO**
+Configuration:
+--------------------------------------------------------------------------------
+winddb relies mostly on command-line arguments for configuration. Therefore, it
+is advised to review "winddb.py --help" carefully.
 
-Usage of exported data:
------------------------
-For easy access, it is recommended to output the generated files to a subdir of
-your webroot. This allows for thirdparty applications (such as mobile apps) to
-download them using a standard HTTP request.
+By default winddb reads winddb.conf, which contains data source configuration.
+For example, the awsxd data-source needs to be configured with MySQL details, 
+while the osod data-source needs to know the path of the osod sqlite database.
+
+Review winddb.conf.sample for an example.
+
+To actually output anything, the winddb sqlite-database (default wind.db) must 
+be populated. Each row in the "stations" table maps to a weather station. The
+handler column maps the weather station to a specific data source. For example
+to add a DPS AWS-X weather station, the handler should be set to "awsxd".
+
+API reference
+--------------------------------------------------------------------------------
+Winddb outputs the following files:
+
+$ROOT                           Root directory
+$ROOT/index.json                Station index, JSON
+$ROOT/$ID/history.json          Last n samples (including latest), JSON
+$ROOT/$ID/latest.json           Lastest sample, JSON
+
+The $ROOT directory is specified using command-line argument -o to winddb.
+
+index.json contains a list of all active stations. A station is considered 
+active if it has at least one recorded datasample within the specified timeframe
+(-a). Inactive stations will be ignored. Each output station is a JSON object 
+with the following members:
+
+Member        Type    Description
+------        ------  -----------
+id            string  Unique station identifier.
+lastupdate    int     UNIX timestamp (UTC) of last received datasample.
+description   string  Station descrition. May be null.
+pos_lon       float   Geographic location, longitude component. May be null.
+pos_lat       float   Geographic location, latitude component. May be null.
+pollrate      int     Expected update rate, in seconds.
+friendlyname  string  Complete station name. A more human-readable version of 
+                      the id. Typically used for user presentation.
+
+For each listed station, there is a subdirectory named according to the station
+ID (see $ID in the scheme above). The subdirs hold the actual sample data for
+the given station. 
+Each subdir holds files latest.json and history.json. latest.json is only the 
+latest datasample object, while history holds a list of the n latest datasample 
+objects. 
+
+Since not all weather stations allow extract single data samples, a winddb 
+datasample objects represents one or more samples, spanning between two 
+timestamps. The number of actual samples in each period is determined by the 
+data source. 
+
+The format of datasample objects in both latest.json and history.json are 
+identical and contain the following members:
+
+Member        Type    Description
+------        ------  -----------
+first_sample  int     UNIX timestamp (UTC) of first sample in this period.
+last_sample   int     UNIX timestamp (UTC of last sample in this period.
+num_samples   int     Number of samples in period.
+airtemp_avg   int     Average air temperature during period, degrees celcius. 
+                      May be null.
+humidity      int     Average relative humidity during period, percent. 
+                      May be null.
+stationid     string  Station identifier (same as the one listed in index.json)
+windspeed_max float   Maximum windspeed during period, m/s.
+windspeed_min float   Minimum windspeed during period, m/s.
+windspeed_avg float   Average windspeed durnig period, m/s.
+winddir_avg   float   Average wind directory, degrees.
+air_pressure  int     Average air pressure, hPa. May be null.
+
+The list of datasample objects is always ordered by last_sample in descending
+order.
+
+In addition to the .json files (index, latest, history), winddb by default also
+outputs the corresponding JSONP files. They contain the same JSON structure, but
+wrapped in a javascript function call. This is primarily used to bypass same 
+origin policy that most browsers implement. The function name is set using 
+command-line argument -c. If JSONP files are not needed, output disabled using
+the -p flag.
+
+API guidelines
+--------------------------------------------------------------------------------
+It is recommended to output the generated files to a subdir of your webroot. 
+This allows for thirdparty applications (such as mobile apps) to download them 
+using a standard HTTP request.
 
 For each station, winddb provides the most recent sample aswell as a log of the
 n most recent samples. Typically, applications want to download the history file 
@@ -40,32 +129,10 @@ In addition to the pollrate, the index file also contains GPS coordinates and
 other miscellaneous station infos. The application should only have to download
 this file once every session.
 
-$ROOT                           HTTP root, for example http://my.windsite.com/
-$ROOT/index.json                Station index, JSON
-$ROOT/index.jsonp               Station index, JSONP
-$ROOT/$stationid/history.json   Last n samples (including latest), JSON
-$ROOT/$stationid/history.jsonp  Last n samples (including latest), JSONP
-$ROOT/$stationid/latest.json    Lastest sample, JSON
-$ROOT/$stationid/latest.jsonp   Lastest sample, JSONP
-
-$stationid can be found in the station index (index.{json,jsonp}).
-
-As the JSONP files are static, (javascript) clients must not be configured to
-dynamically select callback name. A custom callback function name may be
-specified as a command line parameter to winddb. Javascript should then declare
-the same function to receive the padded JSON.
-
-Guidelines for thirdparty applications:
----------------------------------------
 * Do not hammer, use the pollrate for the given station.
 
 * Warn user about old samples. Do not assume lastest sample is NEW, check the
 dates!
 
-* Do not cache station info in between session. Stations may become disabled or
-unavailable at any time.
-
-* Individual samples are grouped into sample periods. A period has a first and
-last sample-timestamp. When plotting average, max and min during a period, the
-application should use the midpoint between these dates as its x-axis value.
-E.g. midpoint = (first_sample + last_sample) / 2
+* Do not cache station info in between session. Stations may become inactive at 
+any time.
