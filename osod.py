@@ -43,7 +43,7 @@ class osod(source):
 		MAX(sample_tstamp) as last_sample, 
 		(MIN(sample_tstamp) - pollrate) as first_sample,
 		MAX(windspeed_max) as windspeed_max, 
-		MIN(windspeed_avg) as windspeed_min,
+		MIN(windspeed_min) as windspeed_min,
 		AVG(windspeed_avg) as windspeed_avg, 
 		AVG(airtemp_avg) as airtemp_avg, 
 		ROUND(AVG(wind_dir),0) as winddir_avg, 
