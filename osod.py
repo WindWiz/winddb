@@ -37,7 +37,6 @@ class osod(source):
 				
 	def get_samples(self, station, t):
 		cursor = self.db.cursor()
-		print datetime.datetime.utcfromtimestamp(t)
 		query = """SELECT 
 		COUNT(*) as num_samples, 
 		MAX(sample_tstamp) as last_sample, 
