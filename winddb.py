@@ -8,7 +8,9 @@ usage: winddb [options]
 
 options:
 -f <dbfile>     WindDB Database file (defaults to wind.db)
--x <configfile> WindDB configuration file (defaults to winddb.conf)
+-d              Daemon mode
+-x <configfile> WindDB configuration file (defaults to winddb.conf), ignored in
+                daemon mode.
 -s <station>    Station to produce output for (omit to output for all)
 -o <dir>        Output directory (defaults to '.')
 -a <age>        Maximum sample age to process, in minutes (defaults to 180)
@@ -16,6 +18,9 @@ options:
 -p              Do not generate JSONP
 -i <indent>     Number of JSON indentations spaces (defaults to 0)
 -c <callback>   JSONP callback function (defaults to 'callback')
+
+In daemon mode, winddb will listen for source change-events on the locally
+bound TCP socket port 10000.
 """
 
 import getopt
@@ -25,6 +30,7 @@ import simplejson as json
 import codecs
 import sqlite3
 import time
+import socket
 
 # plugins
 import awsxd
@@ -136,7 +142,9 @@ def enum_sources(configfile):
 	return { a.name: a, 
 			 o.name: o }
 
-def get_stations(configfile, db, t, idfilter = None):
+def get_stations(configfile, db, maxage, idfilter = None):
+	t = time.time() - (maxage * 60)
+
 	cursor = db.cursor()
 	if idfilter is None:
 		ret = cursor.execute("SELECT * FROM stations ORDER BY id")
@@ -182,6 +190,7 @@ if __name__ == "__main__":
 	scriptdir = os.path.dirname(os.path.realpath(__file__))
 	outputdir = '.'
 	do_json = True
+	daemon = False
 	do_jsonp = True
 	maxage = 180
 	station_name = None
@@ -191,7 +200,7 @@ if __name__ == "__main__":
 	configfile = os.path.join(scriptdir, 'winddb.conf')
 
 	try:
-		opts, args = getopt.getopt(sys.argv[1:], 'f:s:o:pjc:a:i:x:')
+		opts, args = getopt.getopt(sys.argv[1:], 'f:s:o:pjc:a:i:x:d')
 	except getopt.error, msg:
 		usage(msg)
 
@@ -205,6 +214,7 @@ if __name__ == "__main__":
 		if o == '-c': callback = a
 		if o == '-a': maxage = int(a)
 		if o == '-i': indent = int(a)
+		if o == '-d': daemon = True
 
 	if not os.path.isdir(outputdir):
 		print("'%s' is not a directory, aborting" % outputdir)
@@ -219,11 +229,28 @@ if __name__ == "__main__":
 	db.row_factory = sqlite3.Row	# "dict-cursor"-ish support
 	create_database_table(db)
 
-	t = time.time() - (maxage * 60)
-	stations = get_stations(configfile, db, t, station_name)
-	
-	write_index(stations, outputdir, do_json, do_jsonp, callback, indent)	
-	for station in stations:
-		write_station(station, outputdir, do_json, do_jsonp, t, callback, indent)
+	if daemon:
+		server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+		server.bind(('127.0.0.1', 10000))
+		server.listen(10)
+
+		print('Awaiting connections...')
+		while True:
+			client, addr = server.accept()
+			file = client.makefile()
+			station_name = file.readline().rstrip()
+			file.close()
+			client.close()
+
+			stations = get_stations(configfile, db, maxage, station_name)
+			write_index(stations, outputdir, do_json, do_jsonp, callback, indent)
+			for s in stations:
+				write_station(s, outputdir, do_json, do_jsonp, maxage, callback, indent)
+	else:
+		stations = get_stations(configfile, db, maxage, station_name)
+		write_index(stations, outputdir, do_json, do_jsonp, callback, indent)
+		for s in stations:
+			write_station(s, outputdir, do_json, do_jsonp, maxage, callback, indent)
 
 	db.close()
