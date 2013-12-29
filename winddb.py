@@ -179,15 +179,16 @@ def get_stations(configfile, db, t, idfilter = None):
 	return stations
 
 if __name__ == "__main__":
-	outputdir = "."	
+	scriptdir = os.path.dirname(os.path.realpath(__file__))
+	outputdir = '.'
 	do_json = True
 	do_jsonp = True
 	maxage = 180
 	station_name = None
 	callback = 'callback'
-	dbfile = 'wind.db'
+	dbfile = os.path.join(scriptdir, 'wind.db')
 	indent = 0
-	configfile = 'winddb.conf'
+	configfile = os.path.join(scriptdir, 'winddb.conf')
 
 	try:
 		opts, args = getopt.getopt(sys.argv[1:], 'f:s:o:pjc:a:i:x:')
