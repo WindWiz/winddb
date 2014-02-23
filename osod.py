@@ -1,74 +1,83 @@
 #!/usr/bin/env python
-# Copyright (c) 2010-2012 Magnus Olsson (magnus@minimum.se)
+# -*- coding: utf-8 -*-
+# Copyright (c) 2010-2014 Magnus Olsson (magnus@minimum.se)
 # See LICENSE for details
 
 import sqlite3
-from source import source
+import logging
 import datetime
+from source import *
 
-class osod(source):
-	def __init__(self, config):
-		source.__init__(self, "osod", config)
-		dbfile = self.config['db'] if 'db' in config else "osod.db"
-		self.periodtime = self.config['periodtime'] if 'periodtime' in config else 5
-		self.db = sqlite3.connect(dbfile)
-		self.db.row_factory = sqlite3.Row
-		
-	def get_latest_update(self, station):
-		cursor = self.db.cursor()
-		query = """SELECT 
-		MAX(sample_tstamp) as last_sample
-		FROM osod
-		WHERE instance = ? 
-		GROUP BY sample_tstamp/(pollrate*%d)
-		ORDER BY last_sample DESC
-		LIMIT 1,1""" % (self.periodtime)
-		
-		if not cursor.execute(query, (station, )):
-			return None
+class osod(Source):
+    capabilities = [
+        AIRTEMP_AVG,
+        AIRPRESSURE_AVG,
+        HUMIDITY_AVG,
+        WINDSPEED_MAX,
+        WINDSPEED_AVG,
+        WINDSPEED_MIN,
+        WINDDIR_AVG
+    ]
 
-		row = cursor.fetchone()
-		cursor.close()
+    __cap2row = {
+        AIRTEMP_AVG: 'airtemp_avg',
+        AIRPRESSURE_AVG: 'airpressure',
+        HUMIDITY_AVG: 'humidity',
+        WINDSPEED_MAX: 'windspeed_max',
+        WINDSPEED_AVG: 'windspeed_avg',
+        WINDSPEED_MIN: 'windspeed_min',
+        WINDDIR_AVG: 'wind_dir'
+    }
 
-		if row is None:
-			return None
+    def __init__(self, config):
+        Source.__init__(self, "osod", config)
+        dbfile = self.config['db'] if 'db' in config else 'osod.db'
+        self.db = sqlite3.connect(dbfile)
+        self.db.row_factory = sqlite3.Row
 
-		return row['last_sample']
-				
-	def get_samples(self, station, t):
-		cursor = self.db.cursor()
-		query = """SELECT 
-		COUNT(*) as num_samples, 
-		MAX(sample_tstamp) as last_sample, 
-		(MIN(sample_tstamp) - pollrate) as first_sample,
-		MAX(windspeed_max) as windspeed_max, 
-		MIN(windspeed_min) as windspeed_min,
-		AVG(windspeed_avg) as windspeed_avg, 
-		AVG(airtemp_avg) as airtemp_avg, 
-		ROUND(AVG(wind_dir),0) as winddir_avg, 
-		0 as winddir_stability, 
-		AVG(humidity) as humidity, 
-		AVG(airpressure) as airpressure 
-		FROM osod 
-		WHERE instance = ? 
-		GROUP BY sample_tstamp/(pollrate*%d)
-		HAVING first_sample >= ?
-		ORDER BY last_sample DESC
-		LIMIT 1,999999""" % (self.periodtime)
-		
-		if not cursor.execute(query, (station, t)):
-			return None
+    def get_capabilities(self, station):
+        return self.capabilities
 
-		samples = []
-		for row in cursor:
-			sample = {}
-			for key in row.keys():
-				sample[key] = row[key]
-			samples.append(sample)
-				 
-		cursor.close()				 
-				 
-		if not samples:
-			return None
-			
-		return samples
+    def get_samples(self, station, t, x):
+        logger = logging.getLogger('winddb.osod')
+        cursor = self.db.cursor()
+        query = """SELECT
+        sample_tstamp as tstamp,
+        airtemp_avg,
+        airpressure,
+        humidity,
+        windspeed_max,
+        windspeed_avg,
+        windspeed_min,
+        wind_dir
+        FROM osod
+        WHERE instance = ? AND tstamp >= ?
+        ORDER BY tstamp DESC"""
+
+        if not cursor.execute(query, (station, t)):
+            logger.debug('get_samples(%s) failed (t=%d)' % (station, t))
+            return None
+
+        # Collect the samples (fixup MySQL datatypes)
+        fields = set(x) & set(self.capabilities)
+
+        samples = {}
+        for sample_type in fields:
+            samples[sample_type] = []
+
+        row_count = 0
+        for row in cursor:
+            row_count += 1
+            tstamp = row['tstamp']
+            for sample_type in fields:
+                sample_value = float(row[self.__cap2row[sample_type]])
+                samples[sample_type].append({'tstamp': tstamp, 'svalue': sample_value})
+
+        cursor.close()
+
+        if not row_count:
+            logger.debug('get_samples(%s) = 0 samples' % (station))
+            return {}
+        else:
+            logger.debug('get_samples(%s) = %d samples' % (station, len(samples)))
+            return samples

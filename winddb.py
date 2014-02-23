@@ -1,26 +1,25 @@
 #!/usr/bin/env python
-# Copyright (c) 2010-2012 Magnus Olsson (magnus@minimum.se)
+# -*- coding: utf-8 -*-
+# Copyright (c) 2010-2014 Magnus Olsson (magnus@minimum.se)
 # See LICENSE for details
 
 """winddb - WindWiz webdata generator
-  
+
 usage: winddb [options]
 
 options:
+-s <station>    Only process the specified station (may be specified multiple times).
+-g              Do not generate station index.
+-d              Enter daemon mode.
 -f <dbfile>     WindDB Database file (defaults to wind.db)
--d              Daemon mode
--x <configfile> WindDB configuration file (defaults to winddb.conf), ignored in
-                daemon mode.
--s <station>    Station to produce output for (omit to output for all)
+-x <configfile> WindDB configuration file (defaults to winddb.conf)
 -o <dir>        Output directory (defaults to '.')
 -a <age>        Maximum sample age to process, in minutes (defaults to 180)
--j              Do not generate JSON
--p              Do not generate JSONP
 -i <indent>     Number of JSON indentations spaces (defaults to 0)
 -c <callback>   JSONP callback function (defaults to 'callback')
 
-In daemon mode, winddb will listen for source change-events on the locally
-bound TCP socket port 10000.
+In daemon mode, winddb will listen for source change-events on the locally bound
+TCP socket port 10000.
 """
 
 import getopt
@@ -31,28 +30,34 @@ import codecs
 import sqlite3
 import time
 import socket
+import logging
 
-# plugins
+# Plugins
+import source
 import awsxd
 import osod
+import vivad
+
+# Daemon mode TCP port
+TCP_LISTEN_PORT = 10000
 
 def usage(*args):
-	sys.stdout = sys.stderr
-	print __doc__
-	for msg in args:
-		print msg
-	sys.exit(1)
+    sys.stdout = sys.stderr
+    print __doc__
+    for msg in args:
+        print msg
+    sys.exit(1)
 
 def create_database_table(db):
         query = """CREATE TABLE IF NOT EXISTS stations (
-		id varchar(255),
-		friendlyname varchar(255),
-		pollrate int,
-		position_lat float,
-		position_lon float,
-		description text,
-		handler VARCHAR(255),
-		PRIMARY KEY (id))"""
+        id varchar(255),
+        friendlyname varchar(255),
+        pollrate int,
+        position_lat float,
+        position_lon float,
+        description text,
+        handler VARCHAR(255),
+        PRIMARY KEY (id))"""
 
         cursor = db.cursor()
         success = cursor.execute(query)
@@ -61,196 +66,207 @@ def create_database_table(db):
 
         return success
 
-class station(object):
-	def __init__(self, fields, source):
-		self.fields = fields
-		self.source = source
-		self.fields['lastupdate'] = self.get_latest_update()
+def get_sources(config):
+    sources = {}
+    for source_class in source.Source.__subclasses__():
+        source_name = source_class.__name__
+        if source_name in config:
+            source_cfg = config[source_name]
+        else:
+            source_cfg = {}
+        sources[source_name] = source_class(source_cfg)
 
-	def __getattr__(self, name):
-		if name in self.fields:
-			return self.fields[name]
-		else:
-			raise AttributeError
+    return sources
 
-	def get_samples(self, t):
-		return self.source.get_samples(self.id, t)
-		
-	def get_latest_update(self):
-		return self.source.get_latest_update(self.id)
-	
-def write_station(station, outputdir, do_json, do_jsonp, t, callback, indent):
-	samples = station.get_samples(t)
-	
-	if samples is None:
-		print "warning: No samples for '%s'" % station.id
-		return
+class Station(object):
+    def __init__(self, fields, source):
+        self.fields = fields
+        self.source = source
+        self.caps = source.get_capabilities(self.id)
+        self.fields['caps'] = self.caps
 
-	stationdir = os.path.join(outputdir, station.id)
-	try:
-		os.makedirs(stationdir)
-	except OSError: 
-		pass
+    def __getattr__(self, name):
+        if name in self.fields:
+            return self.fields[name]
+        else:
+            raise AttributeError
 
-	latest = json.dumps(samples[0], indent=indent)
-	history = json.dumps(samples, indent=indent)
-	
-	if (do_json):
-		out = open(os.path.join(stationdir, "latest.json"), 'w')
-		out.write(latest)
-		out.close()
-		out = open(os.path.join(stationdir, "history.json"), 'w')
-		out.write(history)
-		out.close()
-		
-	if (do_jsonp):
-		out = open(os.path.join(stationdir, "latest.jsonp"), 'w')
-		out.write("%s(%s);" % (callback, latest))
-		out.close()
-		out = open(os.path.join(stationdir, "history.jsonp"), 'w')
-		out.write("%s(%s);" % (callback, history))
-		out.close()
+    def get_capabilities(self):
+        return self.caps
 
-def write_index(stations, outputdir, do_json, do_jsonp, callback, indent):
-	try:
-		os.makedirs(outputdir)
-	except OSError: 
-		pass
+    def get_samples(self, t, x = None):
+        if x is None:
+            x = self.caps
 
-	index = json.dumps(map(lambda x: x.fields, stations))
+        return self.source.get_samples(self.id, t, x)
 
-	if (do_json):
-		out = open(os.path.join(outputdir, "index.json"), 'w')
-		out.write(index)
-		out.close()
+    def get_latest_tstamp(self, x = None):
+        if x is None:
+            x = self.caps
 
-	if (do_jsonp):
-		out = open(os.path.join(outputdir, "index.jsonp"), 'w')
-		out.write("%s(%s);" % (callback, index))
-		out.close()
+        return self.source.get_latest_tstamp(self.id, x)
 
-def enum_sources(configfile):
-	infile = open(configfile, 'r')
-	config = json.load(infile)
-	infile.close()
+def write_json(path, json_obj, cfg):
+    dirname = os.path.dirname(path)
 
-	# TODO: Enumerate sources from subclasses of source.source
-	# for x in source.source.__subclasses__(): ... 
-	a = awsxd.awsxd(config['awsxd'] if 'awsxd' in config else {})
-	o = osod.osod(config['osod'] if 'osod' in config else {})
-	
-	return { a.name: a, 
-			 o.name: o }
+    try:
+        os.makedirs(dirname)
+    except OSError:
+        pass
 
-def get_stations(configfile, db, maxage, idfilter = None):
-	t = time.time() - (maxage * 60)
+    data = json.dumps(json_obj, indent=cfg['indent'])
+    out = open(path + '.jsonp', 'w')
+    out.write("%s(%s);" % (cfg['callback'], data))
+    out.close()
 
-	cursor = db.cursor()
-	if idfilter is None:
-		ret = cursor.execute("SELECT * FROM stations ORDER BY id")
-	else:
-		ret = cursor.execute("SELECT * FROM stations WHERE id LIKE ? ORDER BY id",
-						   	 (idfilter, ))
+    out = open(path + '.json', 'w')
+    out.write(data)
+    out.close()
 
-	if (not ret):
-		raise Exception("Failed to fetch station list")
+def write_one_station(station, cfg):
+    logger = logging.getLogger('winddb')
+    t = time.time() - (cfg['maxage'] * 60)
+    samples = station.get_samples(t)
 
-	sources = enum_sources(configfile)
-	stations = []
-	for row in cursor:
-		handler = row['handler']
-		if (handler not in sources):
-			print "warning: %s doesnt have a valid handler (%s)" % (row['id'],
-																	handler)
-			continue
+    if samples is None:
+        print('error: failed to get samples for "%s"' % station.id)
+        return
 
-		fields = {'id': row['id'],
-				  'friendlyname': row['friendlyname'],
-				  'pollrate': row['pollrate'],
-				  'pos_lat': row['position_lat'],
-				  'pos_lon': row['position_lon'],
-				  'description': row['description']}
+    if len(samples) == 0:
+        logger.warning('no samples for "%s"' % station.id)
+        return
 
-		s = station(fields, sources[handler])
-		# Filter away inactive stations (no samples)
-		if (s.lastupdate is None):
-			print "warning: no samples for station %s" % s.id
-			continue
-			
-		# Filter away inactive stations (old samples)			
-		if (s.lastupdate < t):
-			print "warning: skipping %s (latest sample %d < %d)" % (s.id, s.lastupdate, t)
-			continue
+    stationdir = os.path.join(cfg['outputdir'], station.id)
+    for sample_type in samples.keys():
+        all_samples = {'samples': samples[sample_type], 'sample_type': sample_type}
+        latest = {'samples': samples[sample_type][0], 'sample_type': sample_type}
 
-		stations.append(s)
+        path = os.path.join(stationdir, sample_type[0], sample_type[1], "latest")
+        write_json(path, latest, cfg)
 
-	return stations
+        path = os.path.join(stationdir, sample_type[0], sample_type[1], "samples")
+        write_json(path, all_samples, cfg)
+
+def write_multiple_stations(stations, cfg):
+    for station in stations:
+        write_one_station(stations[station], cfg)
+
+def write_index(stations, cfg):
+    path = os.path.join(cfg['outputdir'], "index")
+    write_json(path, map(lambda x: stations[x].fields, stations), cfg)
+
+def get_stations(configfile, db, station_filter):
+    cursor = db.cursor()
+    ret = cursor.execute("SELECT * FROM stations ORDER BY id")
+
+    if (not ret):
+        raise Exception("Failed to fetch station list")
+
+    infile = open(configfile, 'r')
+    config = json.load(infile)
+    infile.close()
+
+    sources = get_sources(config)
+    stations = {}
+    for row in cursor:
+        station_id = row['id']
+
+        if station_filter and station_id not in station_filter:
+                continue
+
+        handler = row['handler']
+        if (handler not in sources):
+            print "warning: %s doesnt have a valid handler (%s)" % (row['id'],
+                                                                    handler)
+            continue
+
+        source = sources[handler]
+        fields = {
+            'id': row['id'],
+            'friendlyname': row['friendlyname'],
+            'pollrate': row['pollrate'],
+            'pos_lat': row['position_lat'],
+            'pos_lon': row['position_lon'],
+            'description': row['description'],
+            'caps': source.get_capabilities(row['id'])
+        }
+
+        stations[station_id] = Station(fields, sources[handler])
+
+    return stations
 
 if __name__ == "__main__":
-	scriptdir = os.path.dirname(os.path.realpath(__file__))
-	outputdir = '.'
-	do_json = True
-	daemon = False
-	do_jsonp = True
-	maxage = 180
-	station_name = None
-	callback = 'callback'
-	dbfile = os.path.join(scriptdir, 'wind.db')
-	indent = 0
-	configfile = os.path.join(scriptdir, 'winddb.conf')
+    scriptdir = os.path.dirname(os.path.realpath(__file__))
 
-	try:
-		opts, args = getopt.getopt(sys.argv[1:], 'f:s:o:pjc:a:i:x:d')
-	except getopt.error, msg:
-		usage(msg)
+    # Command line defaults
+    station_filter = []
+    generate_index = True
+    daemon = False
+    dbfile = os.path.join(scriptdir, 'wind.db')
+    configfile = os.path.join(scriptdir, 'winddb.conf')
 
-	for o, a in opts:
-		if o == '-x': configfile = a
-		if o == '-f': dbfile = a
-		if o == '-s': station_name = a
-		if o == '-o': outputdir = a
-		if o == '-p': do_jsonp = False
-		if o == '-j': do_json = False
-		if o == '-c': callback = a
-		if o == '-a': maxage = int(a)
-		if o == '-i': indent = int(a)
-		if o == '-d': daemon = True
+    output_cfg = {
+        'callback': 'callback',
+        'indent': 2,
+        'outputdir': '.',
+        'maxage': 180
+    }
 
-	if not os.path.isdir(outputdir):
-		print("'%s' is not a directory, aborting" % outputdir)
-		sys.exit(1)
-		
-	if not os.access(outputdir, os.W_OK):
-		print("'%s' is not a writable directory, aborting" % outputdir)
-		sys.exit(1)
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], 's:gdf:x:o:a:i:c:')
+    except getopt.error, msg:
+        usage(msg)
 
-	outputdir = os.path.abspath(outputdir)
-	db = sqlite3.connect(dbfile)
-	db.row_factory = sqlite3.Row	# "dict-cursor"-ish support
-	create_database_table(db)
+    for o, a in opts:
+        if o == '-s': station_filter.append(a)
+        if o == '-g': generate_index = False
+        if o == '-d': daemon = True
+        if o == '-f': dbfile = a
+        if o == '-x': configfile = a
+        if o == '-o': output_cfg['outputdir'] = a
+        if o == '-a': output_cfg['maxage'] = int(a)
+        if o == '-i': output_cfg['indent'] = int(a)
+        if o == '-c': output_cfg['callback'] = a
 
-	if daemon:
-		server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-		server.bind(('127.0.0.1', 10000))
-		server.listen(10)
+    logging.basicConfig()
+    logger = logging.getLogger('winddb')
+    logger.setLevel(logging.DEBUG)
 
-		print('Awaiting connections...')
-		while True:
-			client, addr = server.accept()
-			file = client.makefile()
-			station_name = file.readline().rstrip()
-			file.close()
-			client.close()
+    if not os.path.isdir(output_cfg['outputdir']):
+        print("error: '%s' is not a directory" % output_cfg['outputdir'])
+        sys.exit(1)
 
-			stations = get_stations(configfile, db, maxage, station_name)
-			write_index(stations, outputdir, do_json, do_jsonp, callback, indent)
-			for s in stations:
-				write_station(s, outputdir, do_json, do_jsonp, maxage, callback, indent)
-	else:
-		stations = get_stations(configfile, db, maxage, station_name)
-		write_index(stations, outputdir, do_json, do_jsonp, callback, indent)
-		for s in stations:
-			write_station(s, outputdir, do_json, do_jsonp, maxage, callback, indent)
+    if not os.access(output_cfg['outputdir'], os.W_OK):
+        print("error: '%s' is not writable" % output_cfg['outputdir'])
+        sys.exit(1)
 
-	db.close()
+    output_cfg['outputdir'] = os.path.abspath(output_cfg['outputdir'])
+    db = sqlite3.connect(dbfile)
+    db.row_factory = sqlite3.Row
+    create_database_table(db)
+
+    stations = get_stations(configfile, db, station_filter)
+
+    if generate_index:
+        write_index(stations, output_cfg)
+
+    write_multiple_stations(stations, output_cfg)
+
+    if daemon:
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind(('127.0.0.1', TCP_LISTEN_PORT))
+        server.listen(10)
+
+        logger.info('Awaiting connections...')
+        while True:
+            client, addr = server.accept()
+            file = client.makefile()
+            station_id = file.readline().rstrip()
+            file.close()
+            client.close()
+
+            if station_id in stations:
+                write_one_station(stations[station_id], output_cfg)
+
+    db.close()

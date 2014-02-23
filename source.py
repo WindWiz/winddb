@@ -1,27 +1,38 @@
 #!/usr/bin/env python
-# Copyright (c) 2010-2012 Magnus Olsson (magnus@minimum.se)
+# Copyright (c) 2010-2014 Magnus Olsson (magnus@minimum.se)
 # See LICENSE for details
 
-class source(object):
-	def __init__(self, name, config):
-		self.name = name
-		self.config = config
+import simplejson as json
 
-	""" get_samples(station, t)
-	
-    List samples captured for given station at time >= t (UNIX timestamp). It 
-    shall return a list of dicts with the same keys as the API reference lists 
-    for JSON members (see README). 
-    The list shall be ordered by last_sample, descending order. If no samples 
-    are  found, or an error occured, None shall be returned.	
-	"""
-	def get_samples(self, station, t):
-		raise NotImplementedError
+WIND_SPEED  = 'wspeed'
+WIND_DIR    = 'wdir'
+HUMIDITY    = 'humidity'
+AIRTEMP     = 'airtemp'
+AIRPRESSURE = 'airpressure'
+VISIBILITY  = 'visibility'
 
-	""" get_latest_update()
-	
-	Return UTC UNIX timestamp of last sample in latest sample period. If
-	there are no samples, it shall return None.
-	"""
-	def get_latest_update(self, station):
-		raise NotImplementedError
+MIN         = 'min'
+MAX         = 'max'
+AVG         = 'avg'
+STDDEV      = 'stddev'
+
+WINDSPEED_MAX    = (WIND_SPEED,  MAX)
+WINDSPEED_AVG    = (WIND_SPEED , AVG)
+WINDSPEED_MIN    = (WIND_SPEED,  MIN)
+WINDDIR_AVG      = (WIND_DIR,    AVG)
+WINDDIR_STDDEV   = (WIND_DIR,    STDDEV)
+AIRTEMP_AVG      = (AIRTEMP,     AVG)
+HUMIDITY_AVG     = (HUMIDITY,    AVG)
+AIRPRESSURE_AVG  = (AIRPRESSURE, AVG)
+VISIBILITY_AVG   = (VISIBILITY,  AVG)
+
+class Source(object):
+    def __init__(self, name, config):
+        self.name = name
+        self.config = config
+
+    def get_capabilities(self, station):
+        raise NotImplementedError
+
+    def get_samples(self, station, t, x):
+        raise NotImplementedError

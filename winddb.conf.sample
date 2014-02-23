@@ -6,7 +6,9 @@
 		"db": "mydatabase"
 	},
 	"osod": {
-		"db": "../osod/osod.db",
-		"periodtime": 5
+		"db": "../osod/osod.db"
 	}
+    "vivad": {
+        "db": "../vivad/vivad.db"
+    }
 }
