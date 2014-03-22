@@ -267,6 +267,9 @@ if __name__ == "__main__":
             client.close()
 
             if station_id in stations:
+                logger.info('Writing station "%s"' % station_id)
                 write_one_station(stations[station_id], output_cfg)
+            else:
+                logger.info('Unknown station "%s"' % station_id)
 
     db.close()
