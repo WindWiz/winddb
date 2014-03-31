@@ -139,7 +139,7 @@ def write_one_station(station, cfg):
     stationdir = os.path.join(cfg['outputdir'], station.id)
     for sample_type in samples.keys():
         all_samples = {'samples': samples[sample_type], 'sample_type': sample_type}
-        latest = {'samples': samples[sample_type][0], 'sample_type': sample_type}
+        latest = {'samples': samples[sample_type][0:1], 'sample_type': sample_type}
 
         path = os.path.join(stationdir, sample_type[0], sample_type[1], "latest")
         write_json(path, latest, cfg)
